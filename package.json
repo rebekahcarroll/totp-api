@@ -1,0 +1,14 @@
+json{
+  "name": "totp-api",
+  "version": "1.0.0",
+  "description": "TOTP API for lockbox system",
+  "main": "api/generate-totp.js",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "vercel build"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": "18.x"
+  }
+}
