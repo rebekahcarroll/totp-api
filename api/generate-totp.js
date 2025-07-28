@@ -1,7 +1,7 @@
-javascript// api/generate-totp.js
+// api/generate-totp.js
 // This matches your ESP32 TOTP algorithm exactly
 
-import crypto from 'crypto';
+const crypto = require('crypto');
 
 // Base32 decode function (matches ESP32 code)
 function base32Decode(encoded) {
@@ -66,7 +66,7 @@ function generateTOTP(secretKey, timestamp = null) {
 }
 
 // API endpoint handler
-export default function handler(req, res) {
+module.exports = function handler(req, res) {
   // Set CORS headers for Glide
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -86,7 +86,7 @@ export default function handler(req, res) {
     if (!secretKey) {
       return res.status(400).json({ 
         error: 'Missing secretKey parameter',
-        example: 'https://yourapp.vercel.app/api/generate-totp?secretKey=JBSWY3DPEHPK3PXP&boxId=box001'
+        example: 'Add ?secretKey=JBSWY3DPEHPK3PXP&boxId=box001 to the URL'
       });
     }
     
@@ -116,4 +116,4 @@ export default function handler(req, res) {
       details: error.message 
     });
   }
-}
+};
