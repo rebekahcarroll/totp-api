@@ -1,7 +1,7 @@
 // api/generate-totp.js
 // This matches your ESP32 TOTP algorithm exactly
 
-const crypto = require('crypto');
+import crypto from 'crypto';
 
 // Base32 decode function (matches ESP32 code)
 function base32Decode(encoded) {
@@ -31,7 +31,7 @@ function base32Decode(encoded) {
 
 // Generate TOTP (matches ESP32 algorithm exactly)
 function generateTOTP(secretKey, timestamp = null) {
-  const timeStep = 60; // 60 seconds (matches ESP32)
+  const timeStep = 120; // 2 minutes (matches ESP32) - UPDATED FROM 60
   const digits = 4;    // 4 digits (matches ESP32)
   
   // Use current time if not provided
@@ -66,7 +66,7 @@ function generateTOTP(secretKey, timestamp = null) {
 }
 
 // API endpoint handler
-module.exports = function handler(req, res) {
+export default function handler(req, res) {
   // Set CORS headers for Glide
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -86,7 +86,7 @@ module.exports = function handler(req, res) {
     if (!secretKey) {
       return res.status(400).json({ 
         error: 'Missing secretKey parameter',
-        example: 'Add ?secretKey=JBSWY3DPEHPK3PXP&boxId=box001 to the URL'
+        example: 'https://yourapp.vercel.app/api/generate-totp?secretKey=JBSWY3DPEHPK3PXP&boxId=box001'
       });
     }
     
@@ -95,8 +95,8 @@ module.exports = function handler(req, res) {
     
     // Calculate time remaining for this code
     const now = Math.floor(Date.now() / 1000);
-    const secondsInMinute = now % 60;
-    const timeRemaining = 60 - secondsInMinute;
+    const secondsInMinute = now % 120; // 2-minute periods
+    const timeRemaining = 120 - secondsInMinute;
     
     // Return response
     res.status(200).json({
@@ -116,4 +116,4 @@ module.exports = function handler(req, res) {
       details: error.message 
     });
   }
-};
+}
