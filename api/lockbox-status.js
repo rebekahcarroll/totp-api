@@ -1,5 +1,9 @@
 // api/lockbox-status.js
 // Handles heartbeat and status updates from ESP32 lockboxes
+// Stores status in memory and provides on-demand status checks
+
+// In-memory storage for lockbox status (resets on deployment)
+let lastStatus = {};
 
 export default function handler(req, res) {
   // Set CORS headers
@@ -14,74 +18,90 @@ export default function handler(req, res) {
   }
   
   try {
-    // Only accept POST requests for status updates
-    if (req.method !== 'POST') {
-      return res.status(405).json({ 
-        error: 'Method not allowed', 
-        message: 'This endpoint only accepts POST requests' 
-      });
-    }
-    
-    // Extract data from request body
-    const { lockboxId, status, lockOpen, timestamp } = req.body;
-    
-    // Validate required fields
-    if (!lockboxId) {
-      return res.status(400).json({ 
-        error: 'Missing required field: lockboxId' 
-      });
-    }
-    
-    // Log the heartbeat (in production, you'd save this to a database)
-    console.log('Lockbox Heartbeat Received:', {
-      lockboxId,
-      status: status || 'unknown',
-      lockOpen: lockOpen || false,
-      timestamp: timestamp || 'not provided',
-      receivedAt: new Date().toISOString(),
-      clientIP: req.headers['x-forwarded-for'] || req.connection.remoteAddress
-    });
-    
-    // Validate timestamp if provided
-    let timestampStatus = 'not provided';
-    if (timestamp) {
-      const now = Math.floor(Date.now() / 1000);
-      const timeDiff = Math.abs(now - timestamp);
+    // Handle POST requests (ESP32 heartbeats)
+    if (req.method === 'POST') {
+      const { lockboxId, status, lockOpen, timestamp } = req.body;
       
-      if (timeDiff > 300) { // 5 minutes tolerance
-        timestampStatus = `warning: ${timeDiff}s time difference`;
-      } else {
-        timestampStatus = 'synchronized';
+      // Validate required fields
+      if (!lockboxId) {
+        return res.status(400).json({ 
+          error: 'Missing required field: lockboxId' 
+        });
       }
-    }
-    
-    // Prepare response
-    const response = {
-      success: true,
-      message: 'Heartbeat received successfully',
-      lockboxId: lockboxId,
-      receivedAt: new Date().toISOString(),
-      timestampStatus: timestampStatus,
-      data: {
+      
+      // Store latest status in memory
+      lastStatus[lockboxId] = {
         status: status || 'unknown',
         lockOpen: lockOpen || false,
-        timestamp: timestamp
+        timestamp: timestamp || Math.floor(Date.now() / 1000),
+        lastSeen: Date.now(),
+        receivedAt: new Date().toISOString()
+      };
+      
+      // Log for debugging
+      console.log('Heartbeat received from lockbox:', lockboxId, lastStatus[lockboxId]);
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Heartbeat received successfully',
+        lockboxId: lockboxId
+      });
+    }
+    
+    // Handle GET requests (Bubble status checks)
+    if (req.method === 'GET') {
+      const lockboxId = req.query.lockboxId;
+      
+      if (!lockboxId) {
+        return res.status(400).json({ 
+          error: 'Missing lockboxId parameter',
+          example: '/api/lockbox-status?lockboxId=0001'
+        });
       }
-    };
+      
+      const data = lastStatus[lockboxId];
+      
+      // If no data exists, lockbox has never connected
+      if (!data) {
+        return res.status(200).json({
+          lockboxId: lockboxId,
+          isOnline: false,
+          status: 'never_connected',
+          lockOpen: false,
+          lastSeen: null,
+          message: 'No heartbeat data available for this lockbox'
+        });
+      }
+      
+      // Check if lockbox is considered online (heartbeat within last 15 minutes)
+      const timeSinceLastSeen = Date.now() - data.lastSeen;
+      const isOnline = timeSinceLastSeen < 900000; // 15 minutes tolerance
+      const minutesAgo = Math.floor(timeSinceLastSeen / 60000);
+      
+      return res.status(200).json({
+        lockboxId: lockboxId,
+        isOnline: isOnline,
+        status: data.status,
+        lockOpen: data.lockOpen,
+        timestamp: data.timestamp,
+        lastSeen: data.receivedAt,
+        minutesAgo: minutesAgo,
+        message: isOnline ? 
+          `Lockbox is online (last seen ${minutesAgo} minutes ago)` : 
+          `Lockbox is offline (last seen ${minutesAgo} minutes ago)`
+      });
+    }
     
-    // In a production system, you might want to:
-    // 1. Store this data in a database
-    // 2. Check if this lockbox is authorized
-    // 3. Send commands back to the lockbox
-    // 4. Trigger notifications for certain events
-    
-    // For now, just acknowledge receipt
-    res.status(200).json(response);
+    // Method not allowed
+    return res.status(405).json({ 
+      error: 'Method not allowed',
+      message: 'This endpoint accepts GET and POST requests only'
+    });
     
   } catch (error) {
     console.error('Lockbox Status Error:', error);
     res.status(500).json({ 
-      error: 'Failed to process lockbox status',
+      error: 'Failed to process request',
       details: error.message 
     });
   }
