@@ -1,7 +1,7 @@
 // api/generate-totp.js
 // This matches your ESP32 TOTP algorithm exactly
 
-import crypto from 'crypto';
+const crypto = require('crypto');
 
 // Base32 decode function (matches ESP32 code)
 function base32Decode(encoded) {
@@ -13,7 +13,6 @@ function base32Decode(encoded) {
   for (let i = 0; i < encoded.length; i++) {
     const c = encoded[i];
     if (c === '=') break; // Padding
-    
     const val = base32Chars.indexOf(c);
     if (val === -1) continue; // Skip invalid characters
     
@@ -31,8 +30,8 @@ function base32Decode(encoded) {
 
 // Generate TOTP (matches ESP32 algorithm exactly)
 function generateTOTP(secretKey, timestamp = null) {
-  const timeStep = 120; // 2 minutes (matches ESP32) - UPDATED FROM 60
-  const digits = 4;    // 4 digits (matches ESP32)
+  const timeStep = 120; // 2 minutes (UPDATED FROM 60)
+  const digits = 4; // 4 digits (matches ESP32)
   
   // Use current time if not provided
   if (!timestamp) {
@@ -57,16 +56,16 @@ function generateTOTP(secretKey, timestamp = null) {
   // Dynamic truncation
   const offset = hmacResult[19] & 0x0F;
   const code = ((hmacResult[offset] & 0x7F) << 24) |
-               ((hmacResult[offset + 1] & 0xFF) << 16) |
-               ((hmacResult[offset + 2] & 0xFF) << 8) |
-               (hmacResult[offset + 3] & 0xFF);
+              ((hmacResult[offset + 1] & 0xFF) << 16) |
+              ((hmacResult[offset + 2] & 0xFF) << 8) |
+              (hmacResult[offset + 3] & 0xFF);
   
   // Return 4-digit code with leading zeros
   return String(code % 10000).padStart(4, '0');
 }
 
 // API endpoint handler
-export default function handler(req, res) {
+module.exports = function handler(req, res) {
   // Set CORS headers for Glide
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -84,19 +83,19 @@ export default function handler(req, res) {
     
     // Validate input
     if (!secretKey) {
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Missing secretKey parameter',
-        example: 'https://yourapp.vercel.app/api/generate-totp?secretKey=JBSWY3DPEHPK3PXP&boxId=box001'
+        example: 'Add ?secretKey=JBSWY3DPEHPK3PXP&boxId=0001 to the URL'
       });
     }
     
     // Generate TOTP code
     const totpCode = generateTOTP(secretKey, timestamp ? parseInt(timestamp) : null);
     
-    // Calculate time remaining for this code
+    // Calculate time remaining for this code (2-minute window)
     const now = Math.floor(Date.now() / 1000);
-    const secondsInMinute = now % 120; // 2-minute periods
-    const timeRemaining = 120 - secondsInMinute;
+    const secondsInCycle = now % 120; // 2-minute cycle
+    const timeRemaining = 120 - secondsInCycle;
     
     // Return response
     res.status(200).json({
@@ -111,9 +110,9 @@ export default function handler(req, res) {
     
   } catch (error) {
     console.error('TOTP Generation Error:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to generate TOTP code',
-      details: error.message 
+      details: error.message
     });
   }
-}
+};
